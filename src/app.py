@@ -71,14 +71,23 @@ def run_react_agent(user_query: str, provider, mcp_server: MCPAcademicServer) ->
     step = 0
     trace_logs = []
     tools_list = mcp_server.list_tools()
+
+    conversation_context = user_query
+    last_tool_name = None
+    last_observation = None
+    
+    react_history = []
     
     while step < MAX_ITERATIONS:
         step += 1
         step_start_time = time.time()
-        print(f"\n--- 🔄 Vòng lặp ReAct Loop (Step {step}/{MAX_ITERATIONS}) ---")
+        print(f"\\n--- 🔄 Vòng lặp ReAct Loop (Step {step}/{MAX_ITERATIONS}) ---")
         
-        # Gọi LLM với Native Tool Calling Specs
-        llm_response = provider.generate_with_tools(user_query, tools_list, system_prompt=REACT_AGENT_SYSTEM_PROMPT)
+        llm_response = provider.generate_with_tools(
+            conversation_context,
+            tools_list,
+            system_prompt=REACT_AGENT_SYSTEM_PROMPT
+        )
         latency_ms = round((time.time() - step_start_time) * 1000, 2)
         
         thought = llm_response.get("thought", "Đang suy luận...")
@@ -102,39 +111,44 @@ def run_react_agent(user_query: str, provider, mcp_server: MCPAcademicServer) ->
         elif llm_response.get("type") == "tool_call":
             tool_name = llm_response.get("tool_name")
             arguments = llm_response.get("arguments", {})
-            
+
             print(f"🛠️ [Action Proposed]: {tool_name}({arguments})")
-            
-            # Thực thi Tool qua MCP Server
+
+            # ============================================================
+            # 1. THỰC THI TOOL
+            # ============================================================
             mcp_result = mcp_server.call_tool(tool_name, arguments)
             obs_data = mcp_result.get("result", {})
-            
+
             if not obs_data:
                 print(f"👁️ [Observation từ MCP Server]: {{}}")
-                print(f"⚠️ [CHÚ Ý]: MCP Server trả về kết quả rỗng! Học viên cần hoàn thành TODO 2.1 trong 'src/mcp_server.py'.")
-                final_answer = "Chưa thể trả lời chi tiết do chưa nhận được dữ liệu từ MCP Server (hãy hoàn thành TODO 2.1)."
+                print(
+                    "⚠️ [CHÚ Ý]: MCP Server trả về kết quả rỗng! "
+                    "Học viên cần hoàn thành TODO 2.1 trong 'src/mcp_server.py'."
+                )
+
+                final_answer = (
+                    "Chưa thể trả lời chi tiết do chưa nhận được dữ liệu "
+                    "từ MCP Server (hãy hoàn thành TODO 2.1)."
+                )
+
+                observation_text = "{}"
+
             else:
                 obs_str = json.dumps(obs_data, ensure_ascii=False)
                 print(f"👁️ [Observation từ MCP Server]: {obs_str}")
-                
-                # Tổng hợp Final Answer từ kết quả Observation thực tế
-                if obs_data.get("status") == "SUCCESS":
-                    if "data" in obs_data:
-                        d = obs_data["data"]
-                        final_answer = (
-                            f"Kết quả tra cứu cho sinh viên {obs_data.get('student_id', '')} ({d.get('full_name', '')}): "
-                            f"Lớp {d.get('class', '')}, GPA: {d.get('gpa', '')}, Email: {d.get('email', '')}, "
-                            f"Trạng thái: {d.get('status', '')}, Cố vấn: {d.get('advisor', '')}."
-                        )
-                    elif "message" in obs_data:
-                        final_answer = obs_data["message"]
-                    else:
-                        final_answer = f"Đã hoàn tất xử lý qua MCP Server: {json.dumps(obs_data, ensure_ascii=False)}"
-                elif obs_data.get("status") == "NOT_FOUND":
-                    final_answer = obs_data.get("message", "Không tìm thấy thông tin sinh viên yêu cầu.")
-                else:
-                    final_answer = f"Phản hồi từ công cụ: {json.dumps(obs_data, ensure_ascii=False)}"
-            
+
+                observation_text = obs_str
+
+                # ========================================================
+                # Không tự tạo Final Answer nếu Agent còn phải tiếp tục.
+                # Final Answer sẽ được quyết định bởi LLM ở vòng tiếp theo.
+                # ========================================================
+                final_answer = None
+
+            # ============================================================
+            # 2. LƯU TRACE LOG
+            # ============================================================
             trace_logs.append({
                 "step": step,
                 "query": user_query,
@@ -144,20 +158,117 @@ def run_react_agent(user_query: str, provider, mcp_server: MCPAcademicServer) ->
                 "observation": obs_data,
                 "latency_ms": latency_ms
             })
-            
-            # Kết thúc vòng lặp sau khi hoàn tất Observation và xuất Final Answer
-            print(f"🧠 [Thought]: Đã nhận được dữ liệu từ MCP Server. Tổng hợp kết quả phản hồi.")
-            print(f"🏁 [Final Answer]: {final_answer}")
-            
-            trace_logs.append({
-                "step": step + 1,
-                "query": user_query,
-                "action_type": "FINAL_ANSWER",
-                "thought": "Tổng hợp kết quả từ MCP Server thành công.",
-                "output": final_answer,
-                "latency_ms": 10.0
+
+            # ============================================================
+            # 3. LƯU TOÀN BỘ ACTION + OBSERVATION VÀO REACT HISTORY
+            #
+            # KHÔNG overwrite conversation_context.
+            # Mỗi vòng mới chỉ APPEND thêm một bước.
+            # ============================================================
+
+            react_history.append({
+                "step": step,
+                "action": {
+                    "tool_name": tool_name,
+                    "arguments": arguments
+                },
+                "observation": obs_data
             })
-            break
+
+            # ============================================================
+            # 4. BUILD TOÀN BỘ REACT HISTORY
+            # ============================================================
+
+            history_parts = []
+
+            for item in react_history:
+                action_text = json.dumps(
+                    item["action"],
+                    ensure_ascii=False
+                )
+
+                observation_text = json.dumps(
+                    item["observation"],
+                    ensure_ascii=False
+                )
+
+                history_parts.append(
+                    f"""
+        STEP {item["step"]}
+
+        ACTION:
+        {action_text}
+
+        OBSERVATION:
+        {observation_text}
+        """
+                )
+
+            full_react_history = "\n".join(history_parts)
+
+            # ============================================================
+            # 5. CONTEXT CHO VÒNG REACT TIẾP THEO
+            #
+            # LLM luôn nhìn thấy:
+            # - User request
+            # - TẤT CẢ các bước trước
+            # - Observation của từng bước
+            # - Quy tắc CHECK / BOOK
+            # ============================================================
+
+            conversation_context = f"""
+        USER REQUEST:
+        {user_query}
+
+        REACT HISTORY:
+        {full_react_history}
+
+        NEXT STEP RULES:
+
+        1. Nếu yêu cầu ban đầu chỉ là CHECK:
+        - Trả kết quả cho user.
+        - KHÔNG gọi BOOK tool.
+
+        2. Nếu yêu cầu ban đầu là BOOK:
+        - Phải CHECK tất cả tài nguyên cần thiết.
+        - Sau khi đã CHECK xong và tất cả đều khả dụng,
+            phải chuyển sang BOOK.
+        - KHÔNG hỏi lại user có muốn BOOK hay không.
+
+        3. Không được gọi lại cùng một CHECK tool
+        cho cùng một request nếu đã có Observation hợp lệ,
+        trừ khi thông tin kiểm tra đã thay đổi hoặc tool trả lỗi.
+
+        4. Không được BOOK trước khi đã CHECK tài nguyên tương ứng.
+
+        5. Với phòng:
+        check_room_availability
+        -> nếu available
+        -> lấy room_name từ Observation
+        -> book_meeting_room
+
+        6. Với thiết bị:
+        check_equipment_availability
+        -> nếu available
+        -> book_equipment
+
+        7. Nếu BOOK còn thiếu thông tin bắt buộc:
+        - Hỏi user thông tin còn thiếu.
+        - KHÔNG gọi BOOK.
+
+        8. Không được tự tạo hoặc suy đoán dữ liệu.
+        Chỉ sử dụng dữ liệu từ USER REQUEST và OBSERVATION.
+
+        9. Nếu tất cả các bước BOOK đã thành công:
+        -> trả FINAL ANSWER.
+        """
+
+            print(
+                "🔁 [ReAct CONTINUE]: Đã lưu Observation và toàn bộ history. "
+                "Tiếp tục vòng lặp để quyết định bước tiếp theo."
+            )
+
+            continue
 
     return trace_logs
 
