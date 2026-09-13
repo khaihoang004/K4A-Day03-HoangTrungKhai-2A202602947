@@ -222,45 +222,6 @@ def run_react_agent(user_query: str, provider, mcp_server: MCPAcademicServer) ->
 
         REACT HISTORY:
         {full_react_history}
-
-        NEXT STEP RULES:
-
-        1. Nếu yêu cầu ban đầu chỉ là CHECK:
-        - Trả kết quả cho user.
-        - KHÔNG gọi BOOK tool.
-
-        2. Nếu yêu cầu ban đầu là BOOK:
-        - Phải CHECK tất cả tài nguyên cần thiết.
-        - Sau khi đã CHECK xong và tất cả đều khả dụng,
-            phải chuyển sang BOOK.
-        - KHÔNG hỏi lại user có muốn BOOK hay không.
-
-        3. Không được gọi lại cùng một CHECK tool
-        cho cùng một request nếu đã có Observation hợp lệ,
-        trừ khi thông tin kiểm tra đã thay đổi hoặc tool trả lỗi.
-
-        4. Không được BOOK trước khi đã CHECK tài nguyên tương ứng.
-
-        5. Với phòng:
-        check_room_availability
-        -> nếu available
-        -> lấy room_name từ Observation
-        -> book_meeting_room
-
-        6. Với thiết bị:
-        check_equipment_availability
-        -> nếu available
-        -> book_equipment
-
-        7. Nếu BOOK còn thiếu thông tin bắt buộc:
-        - Hỏi user thông tin còn thiếu.
-        - KHÔNG gọi BOOK.
-
-        8. Không được tự tạo hoặc suy đoán dữ liệu.
-        Chỉ sử dụng dữ liệu từ USER REQUEST và OBSERVATION.
-
-        9. Nếu tất cả các bước BOOK đã thành công:
-        -> trả FINAL ANSWER.
         """
 
             print(
