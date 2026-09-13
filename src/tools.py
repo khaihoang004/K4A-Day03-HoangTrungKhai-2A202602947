@@ -5,47 +5,182 @@ Mã nguồn chứa danh sách Tool Schemas (JSON Schema) và Execution Layer ph�
 
 import json
 from typing import Dict, Any
+from datetime import datetime, timedelta
 
 # ==============================================================================
 # 1. KHAI BÁO TOOL SCHEMAS CHUẨN NATIVE JSON SCHEMA (TASK 1.2)
 # ==============================================================================
 
 TOOLS_SCHEMA = [
-    # Tool 1: Đã được định nghĩa mẫu sẵn cho Học viên tham khảo
     {
-        "name": "academic_query",
-        "description": "Tra cứu hồ sơ và thông tin học vụ của sinh viên VinUni bằng mã sinh viên.",
+        "name": "check_room_availability",
+        "description": (
+            "Kiểm tra danh sách các phòng họp phù hợp và còn trống "
+            "trong khoảng thời gian yêu cầu, dựa trên sức chứa."
+        ),
         "parameters": {
             "type": "object",
             "properties": {
-                "student_id": {
+                "start_time": {
                     "type": "string",
-                    "description": "Mã sinh viên cần tra cứu (ví dụ: 'SV2026001')"
+                    "description": (
+                        "Thời gian bắt đầu sử dụng phòng, "
+                        "format 'YYYY-MM-DD HH:MM', ví dụ '2026-09-15 14:00'"
+                    )
+                },
+                "end_time": {
+                    "type": "string",
+                    "description": (
+                        "Thời gian kết thúc sử dụng phòng, "
+                        "format 'YYYY-MM-DD HH:MM', ví dụ '2026-09-15 16:00'"
+                    )
+                },
+                "capacity": {
+                    "type": "integer",
+                    "description": "Số lượng người tham dự cuộc họp"
                 }
             },
-            "required": ["student_id"]
+            "required": [
+                "start_time",
+                "end_time",
+                "capacity"
+            ]
         }
     },
-    
-    # --------------------------------------------------------------------------
-    # TODO 1.2: HỌC VIÊN HOÀN THIỆN TOOL SCHEMA CHO 'schedule_appointment'
-    # 🎯 YÊU CẦU THIẾT KẾ SCHEMA (JSON SCHEMA STANDARD):
-    # 1. Tool dùng để đặt lịch hẹn tư vấn học vụ với Cố vấn học tập VinUni.
-    # 2. Thiết kế các tham số (properties) để LLM trích xuất:
-    #    - student_id (string): Mã sinh viên cần đặt lịch (ví dụ: 'SV2026001')
-    #    - datetime_str (string): Thời gian hẹn (ví dụ: '14:00 15/09/2026')
-    #    - advisor_name (string): Tên cố vấn học tập
-    # 3. Khai báo danh sách các trường bắt buộc (required).
-    # --------------------------------------------------------------------------
+
     {
-        "name": "schedule_appointment",
-        "description": "Đặt lịch hẹn tư vấn học vụ với Cố vấn học tập VinUni.",
+        "name": "check_equipment_availability",
+        "description": (
+            "Kiểm tra số lượng thiết bị còn khả dụng "
+            "trong khoảng thời gian yêu cầu."
+        ),
         "parameters": {
             "type": "object",
             "properties": {
-                # TODO 1.2: Khai báo các thuộc tính tham số cho Tool tại đây...
+                "equipment_type": {
+                    "type": "string",
+                    "description": (
+                        "Loại thiết bị cần mượn, "
+                        "ví dụ: 'projector', 'microphone', 'tv'"
+                    )
+                },
+                "quantity": {
+                    "type": "integer",
+                    "description": "Số lượng thiết bị cần mượn"
+                },
+                "start_time": {
+                    "type": "string",
+                    "description": (
+                        "Thời gian bắt đầu sử dụng thiết bị, "
+                        "format 'YYYY-MM-DD HH:MM', "
+                        "ví dụ '2026-09-15 14:00'"
+                    )
+                },
+                "end_time": {
+                    "type": "string",
+                    "description": (
+                        "Thời gian kết thúc sử dụng thiết bị, "
+                        "format 'YYYY-MM-DD HH:MM', "
+                        "ví dụ '2026-09-15 16:00'"
+                    )
+                }
             },
-            "required": [] # TODO 1.2: Khai báo danh sách các trường bắt buộc tại đây...
+            "required": [
+                "equipment_type",
+                "quantity",
+                "start_time",
+                "end_time"
+            ]
+        }
+    },
+
+    {
+        "name": "book_meeting_room",
+        "description": (
+            "Tạo booking cho một phòng họp đã được xác nhận còn trống. "
+            "Tool sẽ kiểm tra lại conflict trước khi tạo booking."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "room_name": {
+                    "type": "string",
+                    "description": "Tên hoặc mã phòng họp cần đặt"
+                },
+                "start_time": {
+                    "type": "string",
+                    "description": (
+                        "Thời gian bắt đầu cuộc họp, "
+                        "format 'YYYY-MM-DD HH:MM'"
+                    )
+                },
+                "end_time": {
+                    "type": "string",
+                    "description": (
+                        "Thời gian kết thúc cuộc họp, "
+                        "format 'YYYY-MM-DD HH:MM'"
+                    )
+                },
+                "organizer": {
+                    "type": "string",
+                    "description": "Tên người đặt phòng"
+                }
+            },
+            "required": [
+                "room_name",
+                "start_time",
+                "end_time",
+                "organizer"
+            ]
+        }
+    },
+
+    {
+        "name": "book_equipment",
+        "description": (
+            "Tạo yêu cầu mượn hoặc đặt thiết bị đã được xác nhận còn khả dụng. "
+            "Tool sẽ kiểm tra lại số lượng và conflict thời gian trước khi booking."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "equipment_type": {
+                    "type": "string",
+                    "description": (
+                        "Loại thiết bị cần mượn, "
+                        "ví dụ: 'projector', 'microphone', 'tv'"
+                    )
+                },
+                "quantity": {
+                    "type": "integer",
+                    "description": "Số lượng thiết bị cần mượn"
+                },
+                "start_time": {
+                    "type": "string",
+                    "description": (
+                        "Thời gian bắt đầu sử dụng thiết bị, "
+                        "format 'YYYY-MM-DD HH:MM'"
+                    )
+                },
+                "end_time": {
+                    "type": "string",
+                    "description": (
+                        "Thời gian kết thúc sử dụng thiết bị, "
+                        "format 'YYYY-MM-DD HH:MM'"
+                    )
+                },
+                "borrower": {
+                    "type": "string",
+                    "description": "Tên người mượn thiết bị"
+                }
+            },
+            "required": [
+                "equipment_type",
+                "quantity",
+                "start_time",
+                "end_time",
+                "borrower"
+            ]
         }
     }
 ]
@@ -55,64 +190,296 @@ TOOLS_SCHEMA = [
 # ==============================================================================
 
 MOCK_DATABASE = {
-    "SV2026001": {
-        "full_name": "Nguyễn Văn An",
-        "class": "AI-K4",
-        "gpa": 3.85,
-        "email": "an.nv@vinuni.edu.vn",
-        "status": "Đang học",
-        "advisor": "PGS.TS Nguyễn Văn A"
+    # ==============================================================
+    # ROOMS
+    # ==============================================================
+    "rooms": {
+        "ROOM_A101": {
+            "name": "Phòng A101",
+            "capacity": 10,
+            "location": "Tòa A - Tầng 1",
+            "equipment": [
+                "projector",
+                "whiteboard"
+            ]
+        },
+
+        "ROOM_A102": {
+            "name": "Phòng A102",
+            "capacity": 20,
+            "location": "Tòa A - Tầng 1",
+            "equipment": [
+                "projector",
+                "microphone",
+                "whiteboard"
+            ]
+        },
+
+        "ROOM_B201": {
+            "name": "Phòng B201",
+            "capacity": 30,
+            "location": "Tòa B - Tầng 2",
+            "equipment": [
+                "projector",
+                "microphone",
+                "tv",
+                "whiteboard"
+            ]
+        },
+
+        "ROOM_B202": {
+            "name": "Phòng B202",
+            "capacity": 8,
+            "location": "Tòa B - Tầng 2",
+            "equipment": [
+                "tv",
+                "whiteboard"
+            ]
+        }
     },
-    "SV2026002": {
-        "full_name": "Trần Thị Bình",
-        "class": "AI-K4",
-        "gpa": 3.60,
-        "email": "binh.tt@vinuni.edu.vn",
-        "status": "Đang học",
-        "advisor": "TS. Lê Thị B"
-    }
+
+    # ==============================================================
+    # EQUIPMENT
+    # ==============================================================
+    "equipment": {
+        "projector": {
+            "name": "Máy chiếu",
+            "total_quantity": 3
+        },
+
+        "microphone": {
+            "name": "Micro không dây",
+            "total_quantity": 5
+        },
+
+        "tv": {
+            "name": "TV màn hình lớn",
+            "total_quantity": 2
+        },
+
+        "whiteboard": {
+            "name": "Bảng trắng",
+            "total_quantity": 4
+        }
+    },
+
+    # ==============================================================
+    # ROOM BOOKINGS
+    # ==============================================================
+    "room_bookings": [
+        {
+            "booking_id": "RB001",
+            "room_name": "ROOM_A101",
+            "start_time": "2026-09-15 14:00",
+            "end_time": "2026-09-15 15:00",
+            "organizer": "Nguyễn Văn An"
+        },
+
+        {
+            "booking_id": "RB002",
+            "room_name": "ROOM_A102",
+            "start_time": "2026-09-15 09:00",
+            "end_time": "2026-09-15 11:00",
+            "organizer": "Trần Thị Bình"
+        }
+    ],
+
+    # ==============================================================
+    # EQUIPMENT BOOKINGS
+    # ==============================================================
+    "equipment_bookings": [
+        {
+            "booking_id": "EB001",
+            "equipment_type": "projector",
+            "quantity": 1,
+            "start_time": "2026-09-15 14:00",
+            "end_time": "2026-09-15 15:00",
+            "borrower": "Nguyễn Văn An"
+        },
+
+        {
+            "booking_id": "EB002",
+            "equipment_type": "microphone",
+            "quantity": 2,
+            "start_time": "2026-09-15 09:00",
+            "end_time": "2026-09-15 11:00",
+            "borrower": "Trần Thị Bình"
+        }
+    ]
 }
 
+# =====================================
+# HELPERS
+# =====================================
 
-def execute_academic_query(student_id: str) -> str:
-    """Thực thi tra cứu học vụ theo mã sinh viên"""
-    student = MOCK_DATABASE.get(student_id.strip().upper())
-    if student:
-        return json.dumps({
-            "status": "SUCCESS",
-            "student_id": student_id,
-            "data": student
-        }, ensure_ascii=False)
-    else:
-        return json.dumps({
-            "status": "NOT_FOUND",
-            "message": f"Không tìm thấy dữ liệu sinh viên có mã '{student_id}'"
-        }, ensure_ascii=False)
+DATETIME_FORMAT = "%Y-%m-%d %H:%M"
 
+def parse_datetime(value: str) -> datetime:
+    return datetime.strptime(value, DATETIME_FORMAT)
 
-def execute_schedule_appointment(student_id: str, datetime_str: str, advisor_name: str = "PGS.TS Nguyễn Văn A") -> str:
-    """Thực thi đặt lịch hẹn tư vấn học vụ"""
-    return json.dumps({
-        "status": "SUCCESS",
-        "booking_id": f"BK-{student_id}-99",
-        "student_id": student_id,
-        "datetime": datetime_str,
-        "advisor": advisor_name,
-        "message": f"Đặt lịch thành công cho sinh viên {student_id} với {advisor_name} vào lúc {datetime_str}."
-    }, ensure_ascii=False)
+def validate_time_range(start_time: str, end_time: str):
+    start, end = parse_datetime(start_time), parse_datetime(end_time)
+    if start >= end:
+        raise ValueError("start_time phải nhỏ hơn end_time.")
+    return start, end
 
+def is_time_overlap(existing_start: datetime, existing_end: datetime, new_start: datetime, new_end: datetime) -> bool:
+    return existing_start < new_end and existing_end > new_start
 
-# Router gọi tool thực tế
+def execute_check_room_availability(start_time: str, end_time: str, capacity: int) -> str:
+    try:
+        new_start, new_end = validate_time_range(start_time, end_time)
+        if capacity <= 0: raise ValueError("capacity phải lớn hơn 0.")
+    except ValueError as e:
+        return json.dumps({"status": "INVALID_ARGUMENT", "message": str(e)}, ensure_ascii=False)
+
+    available_rooms = []
+    for room_id, room in MOCK_DATABASE["rooms"].items():
+        if room["capacity"] < capacity: continue
+        is_booked = False
+        for booking in MOCK_DATABASE["room_bookings"]:
+            if booking["room_name"] != room_id: continue
+            existing_start = parse_datetime(booking["start_time"])
+            existing_end = parse_datetime(booking["end_time"])
+            if is_time_overlap(existing_start, existing_end, new_start, new_end):
+                is_booked = True
+                break
+        if not is_booked: available_rooms.append({"room_id": room_id, **room})
+
+    if not available_rooms:
+        return json.dumps({"status": "UNAVAILABLE", "message": f"Không có phòng phù hợp cho {capacity} người từ {start_time} đến {end_time}."}, ensure_ascii=False)
+
+    return json.dumps({"status": "SUCCESS", "start_time": start_time, "end_time": end_time, "capacity": capacity, "available_rooms": available_rooms}, ensure_ascii=False)
+
+def execute_check_equipment_availability(equipment_type: str, quantity: int, start_time: str, end_time: str) -> str:
+    equipment_type = equipment_type.strip().lower()
+    try:
+        new_start, new_end = validate_time_range(start_time, end_time)
+        if quantity <= 0: raise ValueError("quantity phải lớn hơn 0.")
+    except ValueError as e:
+        return json.dumps({"status": "INVALID_ARGUMENT", "message": str(e)}, ensure_ascii=False)
+
+    equipment = MOCK_DATABASE["equipment"].get(equipment_type)
+    if not equipment:
+        return json.dumps({"status": "NOT_FOUND", "message": f"Không tìm thấy thiết bị '{equipment_type}'."}, ensure_ascii=False)
+
+    events = []
+    for booking in MOCK_DATABASE["equipment_bookings"]:
+        if booking["equipment_type"] != equipment_type: continue
+        existing_start = parse_datetime(booking["start_time"])
+        existing_end = parse_datetime(booking["end_time"])
+        if not is_time_overlap(existing_start, existing_end, new_start, new_end): continue
+        overlap_start, overlap_end = max(existing_start, new_start), min(existing_end, new_end)
+        events.extend([(overlap_start, booking["quantity"]), (overlap_end, -booking["quantity"])])
+
+    events.sort(key=lambda x: (x[0], 0 if x[1] < 0 else 1))
+    current_booked, max_booked = 0, 0
+    for _, delta in events:
+        current_booked += delta
+        max_booked = max(max_booked, current_booked)
+
+    available_quantity = equipment["total_quantity"] - max_booked
+    if available_quantity < quantity:
+        return json.dumps({"status": "UNAVAILABLE", "equipment_type": equipment_type, "requested_quantity": quantity, "available_quantity": max(0, available_quantity), "start_time": start_time, "end_time": end_time, "message": f"Không đủ {equipment['name']} trong khoảng thời gian yêu cầu."}, ensure_ascii=False)
+
+    return json.dumps({"status": "SUCCESS", "equipment_type": equipment_type, "requested_quantity": quantity, "available_quantity": available_quantity, "start_time": start_time, "end_time": end_time}, ensure_ascii=False)
+
+def execute_book_meeting_room(room_name: str, start_time: str, end_time: str, organizer: str) -> str:
+    try:
+        new_start, new_end = validate_time_range(start_time, end_time)
+    except ValueError as e:
+        return json.dumps({"status": "INVALID_ARGUMENT", "message": str(e)}, ensure_ascii=False)
+
+    if room_name not in MOCK_DATABASE["rooms"]:
+        return json.dumps({"status": "NOT_FOUND", "message": f"Không tìm thấy phòng '{room_name}'."}, ensure_ascii=False)
+
+    for booking in MOCK_DATABASE["room_bookings"]:
+        if booking["room_name"] != room_name: continue
+        existing_start = parse_datetime(booking["start_time"])
+        existing_end = parse_datetime(booking["end_time"])
+        if is_time_overlap(existing_start, existing_end, new_start, new_end):
+            return json.dumps({"status": "CONFLICT", "message": f"Phòng {room_name} đã được đặt trong khoảng thời gian này.", "conflict_booking": booking}, ensure_ascii=False)
+
+    booking_id = f"RB-{len(MOCK_DATABASE['room_bookings']) + 1:03d}"
+    new_booking = {"booking_id": booking_id, "room_name": room_name, "start_time": start_time, "end_time": end_time, "organizer": organizer}
+    MOCK_DATABASE["room_bookings"].append(new_booking)
+
+    return json.dumps({"status": "SUCCESS", "message": "Đặt phòng thành công.", "booking": new_booking}, ensure_ascii=False)
+
+def execute_book_equipment(equipment_type: str, quantity: int, start_time: str, end_time: str, borrower: str) -> str:
+    equipment_type = equipment_type.strip().lower()
+    try:
+        new_start, new_end = validate_time_range(start_time, end_time)
+        if quantity <= 0: raise ValueError("quantity phải lớn hơn 0.")
+    except ValueError as e:
+        return json.dumps({"status": "INVALID_ARGUMENT", "message": str(e)}, ensure_ascii=False)
+
+    equipment = MOCK_DATABASE["equipment"].get(equipment_type)
+    if not equipment:
+        return json.dumps({"status": "NOT_FOUND", "message": f"Không tìm thấy thiết bị '{equipment_type}'."}, ensure_ascii=False)
+
+    events = []
+    for booking in MOCK_DATABASE["equipment_bookings"]:
+        if booking["equipment_type"] != equipment_type: continue
+        existing_start = parse_datetime(booking["start_time"])
+        existing_end = parse_datetime(booking["end_time"])
+        if not is_time_overlap(existing_start, existing_end, new_start, new_end): continue
+        overlap_start, overlap_end = max(existing_start, new_start), min(existing_end, new_end)
+        events.extend([(overlap_start, booking["quantity"]), (overlap_end, -booking["quantity"])])
+
+    events.sort(key=lambda x: (x[0], 0 if x[1] < 0 else 1))
+    current_booked, max_booked = 0, 0
+    for _, delta in events:
+        current_booked += delta
+        max_booked = max(max_booked, current_booked)
+
+    available_quantity = equipment["total_quantity"] - max_booked
+    if available_quantity < quantity:
+        return json.dumps({"status": "CONFLICT", "message": f"Không đủ {equipment['name']} để đặt {quantity} cái.", "requested_quantity": quantity, "available_quantity": max(0, available_quantity)}, ensure_ascii=False)
+
+    booking_id = f"EB-{len(MOCK_DATABASE['equipment_bookings']) + 1:03d}"
+    new_booking = {"booking_id": booking_id, "equipment_type": equipment_type, "quantity": quantity, "start_time": start_time, "end_time": end_time, "borrower": borrower}
+    MOCK_DATABASE["equipment_bookings"].append(new_booking)
+
+    return json.dumps({"status": "SUCCESS", "message": "Đặt thiết bị thành công.", "booking": new_booking}, ensure_ascii=False)
+
 TOOL_ROUTER = {
-    "academic_query": execute_academic_query,
-    "schedule_appointment": execute_schedule_appointment
+    "check_room_availability": execute_check_room_availability,
+    "check_equipment_availability": execute_check_equipment_availability,
+    "book_meeting_room": execute_book_meeting_room,
+    "book_equipment": execute_book_equipment
 }
 
 def dispatch_tool_call(tool_name: str, arguments: Dict[str, Any]) -> str:
-    """Hàm trung chuyển thực thi tool"""
-    if tool_name in TOOL_ROUTER:
-        try:
-            return TOOL_ROUTER[tool_name](**arguments)
-        except Exception as e:
-            return json.dumps({"status": "EXECUTION_ERROR", "error": str(e)}, ensure_ascii=False)
-    return json.dumps({"status": "UNKNOWN_TOOL", "error": f"Tool '{tool_name}' không tồn tại!"}, ensure_ascii=False)
+    if tool_name not in TOOL_ROUTER:
+        return json.dumps({"status": "UNKNOWN_TOOL", "message": f"Tool '{tool_name}' không tồn tại."}, ensure_ascii=False)
+    try:
+        return TOOL_ROUTER[tool_name](**arguments)
+    except TypeError as e:
+        return json.dumps({"status": "INVALID_ARGUMENT", "message": str(e)}, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({"status": "EXECUTION_ERROR", "message": str(e)}, ensure_ascii=False)
+
+def main():
+    print("=" * 70 + "\nFACILITIES TOOLS TEST\n" + "=" * 70)
+    
+    print("\n[1] CHECK ROOM")
+    print(dispatch_tool_call("check_room_availability", {"start_time": "2026-09-15 14:00", "end_time": "2026-09-15 15:00", "capacity": 10}))
+    
+    print("\n[2] CHECK EQUIPMENT")
+    print(dispatch_tool_call("check_equipment_availability", {"equipment_type": "projector", "quantity": 1, "start_time": "2026-09-15 14:00", "end_time": "2026-09-15 15:00"}))
+    
+    print("\n[3] BOOK ROOM")
+    print(dispatch_tool_call("book_meeting_room", {"room_name": "ROOM_A102", "start_time": "2026-09-15 14:00", "end_time": "2026-09-15 15:00", "organizer": "Hoàng Trung Khải"}))
+    
+    print("\n[4] BOOK EQUIPMENT")
+    print(dispatch_tool_call("book_equipment", {"equipment_type": "projector", "quantity": 1, "start_time": "2026-09-15 14:00", "end_time": "2026-09-15 15:00", "borrower": "Hoàng Trung Khải"}))
+    
+    print("\n[5] TEST ROOM CONFLICT")
+    print(dispatch_tool_call("book_meeting_room", {"room_name": "ROOM_A102", "start_time": "2026-09-15 14:30", "end_time": "2026-09-15 15:30", "organizer": "Test User"}))
+    
+    print("\n[6] ROOM BOOKINGS\n", json.dumps(MOCK_DATABASE["room_bookings"], ensure_ascii=False, indent=2))
+    print("\n[7] EQUIPMENT BOOKINGS\n", json.dumps(MOCK_DATABASE["equipment_bookings"], ensure_ascii=False, indent=2))
+
+if __name__ == "__main__":
+    main()
